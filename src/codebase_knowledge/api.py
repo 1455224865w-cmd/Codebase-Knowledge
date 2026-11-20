@@ -26,7 +26,7 @@ class AskIn(BaseModel):
 
 
 def create_app(db_path: str | None = None) -> FastAPI:
-    app = FastAPI(title="Codebase Knowledge", version="0.1.6")
+    app = FastAPI(title="Codebase Knowledge", version="0.1.7")
     install(app)
     mount(app)
     app.state.scans = {}

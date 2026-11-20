@@ -38,4 +38,7 @@ def test_english_path_error_and_mcp_index():
     assert payload["routes"][0]["status"] == "exact"
     assert "inferred" in payload["message"]
     spring = (ROOT / "spring-ai" / "application-mcp.yml").read_text(encoding="utf-8")
-    assert "endpoint: /mcp" in spring and "streamable-http:" in spring
+    sample = (ROOT / "nacos" / "spring-mcp.yaml").read_text(encoding="utf-8")
+    assert "nacos:" in spring
+    assert "127.0.0.1" not in spring
+    assert "${MCP_SERVICE_URL}" in sample
