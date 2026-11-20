@@ -96,3 +96,17 @@ public class Worker {}
     assert found["certainty"] == "parsed"
     assert any("[exact]" in line and "/orders" in line for line in found["evidence"])
     assert any("inferred" not in line or "[exact]" in line for line in found["evidence"])
+
+
+def test_exact_inheritance_cycle_is_reported():
+    index = CodeIndex()
+    index.add_file("src/A.java", "public class A extends B {}")
+    index.add_file("src/B.java", "public class B extends A {}")
+    index.add_file("src/C.java", "public class C {}")
+    found = index.cycles()
+    assert found
+    assert found[0]["status"] == "exact"
+    assert set(found[0]["nodes"]) >= {"A", "B"}
+    plain = CodeIndex()
+    plain.add_file("src/C.java", "public class C {}")
+    assert plain.cycles() == []

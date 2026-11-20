@@ -198,6 +198,30 @@ class CodeIndex:
             if rel["kind"] in {"extends", "implements"} and rel["target"] == name
         ]
 
+    def cycles(self) -> list[dict]:
+        """只在精确的继承和实现关系里找环，不把推测调用算进去。"""
+        graph: dict[str, list[str]] = {}
+        for rel in self.relations("exact"):
+            if rel["kind"] in {"extends", "implements"}:
+                graph.setdefault(rel["source"], []).append(rel["target"])
+        found = []
+        seen = set()
+
+        def walk(node: str, stack: list[str]) -> None:
+            if node in stack:
+                cycle = stack[stack.index(node) :] + [node]
+                key = tuple(sorted(set(cycle)))
+                if key not in seen:
+                    seen.add(key)
+                    found.append({"nodes": cycle, "status": "exact"})
+                return
+            for nxt in graph.get(node, []):
+                walk(nxt, stack + [node])
+
+        for node in graph:
+            walk(node, [])
+        return found
+
     def summary(self) -> dict:
         roles: dict[str, int] = {}
         for item in self.types():
