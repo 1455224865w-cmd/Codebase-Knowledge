@@ -94,6 +94,10 @@ def parse_java(path: str, source: str) -> tuple[dict, list[dict]]:
                 relations.append(
                     _rel(path, f"{node.name}.{method.name}", "calls", target, _line(call), "inferred")
                 )
+    for imp in tree.imports or []:
+        target = getattr(imp, "path", None)
+        if isinstance(target, str) and target:
+            relations.append(_rel(path, path, "imports", target, _line(imp), "exact"))
     return {"path": path, "parsed": True, "types": types, "relations": relations}, []
 
 
@@ -249,9 +253,14 @@ def answer(index: CodeIndex, question: str) -> dict:
                     evidence.append(
                         f"{rel['path']}:{rel['line']} {rel['source']} {rel['kind']} {rel['target']} [{rel['status']}]"
                     )
+    for route in index.routes():
+        if route["path"] and route["path"] in question:
+            evidence.append(
+                f"{route['file']}:{route['line']} {route['http']} {route['path']} -> {route['type']}.{route['method']} [exact]"
+            )
     if not evidence:
         return {
-            "answer": "索引里没有这个问题点名的类型，不能把推测写成事实。",
+            "answer": "索引里没有这个问题点名的类型或路径，不能把推测写成事实。",
             "evidence": [],
             "certainty": "unknown",
         }

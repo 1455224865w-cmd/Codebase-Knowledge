@@ -1,4 +1,4 @@
-from codebase_knowledge.index import CodeIndex
+from codebase_knowledge.index import CodeIndex, answer
 
 CONTROLLER = """
 package demo.order;
@@ -79,3 +79,20 @@ def test_routes_and_where_columns_are_exact():
     assert found.json()[0]["method"] == "list"
     missed = client.get(f"/api/scans/{created.json()['id']}/routes", params={"path": "/missing"})
     assert missed.json() == []
+
+
+def test_imports_and_route_answers_stay_exact():
+    source = """
+import demo.order.OrderMapper;
+public class Worker {}
+"""
+    index = CodeIndex()
+    index.add_file("src/Worker.java", source)
+    index.add_file("src/OrderController.java", CONTROLLER)
+    imported = [rel for rel in index.relations() if rel["kind"] == "imports"]
+    assert imported[0]["target"] == "demo.order.OrderMapper"
+    assert imported[0]["status"] == "exact"
+    found = answer(index, "/orders 对应哪个方法")
+    assert found["certainty"] == "parsed"
+    assert any("[exact]" in line and "/orders" in line for line in found["evidence"])
+    assert any("inferred" not in line or "[exact]" in line for line in found["evidence"])
