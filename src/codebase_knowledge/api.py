@@ -7,7 +7,7 @@ import uuid
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from codebase_knowledge.index import CodeIndex, answer, context_for_task
+from codebase_knowledge.index import CodeIndex, ScanStore, answer, context_for_task, structure
 
 
 class FileIn(BaseModel):
@@ -23,9 +23,10 @@ class AskIn(BaseModel):
     question: str
 
 
-def create_app() -> FastAPI:
+def create_app(db_path: str | None = None) -> FastAPI:
     app = FastAPI(title="Codebase Knowledge", version="0.1.0")
     app.state.scans = {}
+    app.state.store = ScanStore(db_path) if db_path else None
 
     @app.get("/api/health")
     def health():
@@ -40,10 +41,16 @@ def create_app() -> FastAPI:
             index.add_file(item.path, item.content)
         scan_id = uuid.uuid4().hex
         app.state.scans[scan_id] = index
+        if app.state.store:
+            app.state.store.save(scan_id, index)
         return {"id": scan_id, "summary": index.summary(), "issues": index.issues}
 
     def get_index(scan_id: str) -> CodeIndex:
         index = app.state.scans.get(scan_id)
+        if index is None and app.state.store:
+            index = app.state.store.load(scan_id)
+            if index is not None:
+                app.state.scans[scan_id] = index
         if index is None:
             raise HTTPException(status_code=404, detail="扫描不存在")
         return index
@@ -51,6 +58,10 @@ def create_app() -> FastAPI:
     @app.get("/api/scans/{scan_id}/types")
     def types(scan_id: str):
         return get_index(scan_id).types()
+
+    @app.get("/api/scans/{scan_id}/structure")
+    def graph(scan_id: str):
+        return structure(get_index(scan_id))
 
     @app.post("/api/scans/{scan_id}/context")
     def context(scan_id: str, body: AskIn):

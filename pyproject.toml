@@ -13,7 +13,8 @@ dependencies = [
   "fastapi>=0.115",
   "uvicorn>=0.32",
   "pydantic>=2",
-  "javalang>=0.13"
+  "javalang>=0.13",
+  "sqlglot>=25"
 ]
 
 [project.optional-dependencies]

@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+import json
+import re
+import sqlite3
+import xml.etree.ElementTree as ET
+
 import javalang
+import sqlglot
 from javalang.parser import JavaSyntaxError
+from sqlglot import exp
+from sqlglot.errors import ParseError
 
 ROLE_ANNOTATIONS = {
     "RestController": "controller",
@@ -99,13 +107,18 @@ class CodeIndex:
         self.issues: list[dict] = []
 
     def add_file(self, path: str, source: str) -> None:
-        if not path.endswith(".java"):
-            self.files.append({"path": path, "parsed": False, "types": [], "relations": [], "skipped": "不是 Java 文件"})
+        if path.endswith(".java"):
+            parsed, issues = parse_java(path, source)
+            parsed.setdefault("relations", [])
+            self.files.append(parsed)
+            self.issues.extend(issues)
             return
-        parsed, issues = parse_java(path, source)
-        parsed.setdefault("relations", [])
-        self.files.append(parsed)
-        self.issues.extend(issues)
+        if path.endswith(".xml"):
+            parsed, issues = parse_mapper_xml(path, source)
+            self.files.append(parsed)
+            self.issues.extend(issues)
+            return
+        self.files.append({"path": path, "parsed": False, "types": [], "relations": [], "skipped": "不是 Java 或 Mapper XML"})
 
     def types(self) -> list[dict]:
         rows = []
@@ -116,9 +129,23 @@ class CodeIndex:
 
     def relations(self, status: str | None = None) -> list[dict]:
         rows = [rel for file in self.files for rel in file.get("relations") or []]
+        rows.extend(self._statement_links())
         if status:
             return [row for row in rows if row["status"] == status]
         return rows
+
+    def _statement_links(self) -> list[dict]:
+        types = {item["name"]: item for item in self.types()}
+        links = []
+        for file in self.files:
+            for stmt in file.get("statements") or []:
+                simple = stmt["namespace"].split(".")[-1] if stmt.get("namespace") else ""
+                java = types.get(simple)
+                if not java:
+                    continue
+                if any(method["name"] == stmt["id"] for method in java["methods"]):
+                    links.append(_rel(file["path"], f"{simple}.{stmt['id']}", "maps", stmt["id"], stmt["line"], "exact"))
+        return links
 
     def find_type(self, name: str) -> list[dict]:
         return [item for item in self.types() if item["name"] == name]
@@ -189,3 +216,97 @@ def answer(index: CodeIndex, question: str) -> dict:
         "evidence": evidence[:30],
         "certainty": "parsed",
     }
+
+
+def parse_mapper_xml(path: str, source: str) -> tuple[dict, list[dict]]:
+    """解析 MyBatis Mapper XML。SQL 解析失败时不编造表关系。"""
+    cleaned = re.sub(r"<!DOCTYPE[^>]*>", "", source, count=1)
+    try:
+        root = ET.fromstring(cleaned)
+    except ET.ParseError as exc:
+        return {"path": path, "parsed": False, "types": [], "relations": [], "statements": []}, [
+            ParseIssue(path, str(exc).splitlines()[0]).to_dict()
+        ]
+    if not root.tag.endswith("mapper"):
+        return {"path": path, "parsed": False, "types": [], "relations": [], "statements": []}, [
+            ParseIssue(path, "根节点不是 mapper").to_dict()
+        ]
+    namespace = root.get("namespace") or ""
+    relations = []
+    statements = []
+    issues = []
+    lines = source.splitlines()
+    for child in list(root):
+        tag = child.tag.split("}")[-1]
+        if tag not in {"select", "insert", "update", "delete"}:
+            continue
+        stmt_id = child.get("id") or ""
+        sql = "".join(child.itertext())
+        line = _xml_line(lines, tag, stmt_id)
+        tables, parsed = _tables_from_sql(sql)
+        statements.append({"id": stmt_id, "namespace": namespace, "sql": sql.strip(), "line": line, "tables": tables})
+        if not parsed:
+            issues.append(ParseIssue(path, f"{stmt_id or tag} 的 SQL 未能解析，没有记录表关系").to_dict())
+            continue
+        for table in tables:
+            relations.append(_rel(path, f"{namespace}#{stmt_id}", "reads_table", table, line, "exact"))
+    return {
+        "path": path,
+        "parsed": True,
+        "types": [],
+        "relations": relations,
+        "statements": statements,
+    }, issues
+
+
+def _xml_line(lines: list[str], tag: str, stmt_id: str) -> int | None:
+    needle = f'id="{stmt_id}"'
+    for index, line in enumerate(lines, start=1):
+        if f"<{tag}" in line and needle in line:
+            return index
+    return None
+
+
+def _tables_from_sql(sql: str) -> tuple[list[str], bool]:
+    normalized = re.sub(r"#\{[^}]+\}|\$\{[^}]+\}", "?", sql)
+    try:
+        parsed = sqlglot.parse_one(normalized, read="postgres")
+    except ParseError:
+        return [], False
+    if not isinstance(parsed, exp.Select):
+        return [], False
+    return sorted({table.name for table in parsed.find_all(exp.Table)}), True
+
+
+def structure(index: CodeIndex) -> dict:
+    """只返回已经解析到的类型和关系，不补不存在的节点。"""
+    nodes = [
+        {"id": f"{item['path']}::{item['name']}", "name": item["name"], "status": "exact", "path": item["path"]}
+        for item in index.types()
+    ]
+    edges = [
+        {"source": rel["source"], "target": rel["target"], "kind": rel["kind"], "status": rel["status"], "path": rel["path"], "line": rel["line"]}
+        for rel in index.relations()
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+class ScanStore:
+    def __init__(self, path: str):
+        self.conn = sqlite3.connect(path, check_same_thread=False)
+        self.conn.execute("CREATE TABLE IF NOT EXISTS scans (id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
+
+    def save(self, scan_id: str, index: CodeIndex) -> None:
+        payload = json.dumps({"files": index.files, "issues": index.issues}, ensure_ascii=False)
+        self.conn.execute("INSERT OR REPLACE INTO scans VALUES (?, ?)", (scan_id, payload))
+        self.conn.commit()
+
+    def load(self, scan_id: str) -> CodeIndex | None:
+        row = self.conn.execute("SELECT payload FROM scans WHERE id=?", (scan_id,)).fetchone()
+        if row is None:
+            return None
+        data = json.loads(row[0])
+        index = CodeIndex()
+        index.files = data["files"]
+        index.issues = data["issues"]
+        return index
