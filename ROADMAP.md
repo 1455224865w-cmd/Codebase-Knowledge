@@ -25,3 +25,7 @@ Java 文件解析、角色识别、精确继承关系、推测调用、任务上
 ## 暂不做
 
 全仓库向量化、Neo4j、一次问答扫描整个磁盘。
+
+## 0.1.2
+
+借鉴 [JCodeIndexer](https://github.com/Lincoln-cn/JCodeIndexer) 的调用方查询，以及 [java-callgraph2](https://github.com/Adrninistrator/java-callgraph2) 的 MyBatis 操作区分：可以查调用方和已写出的实现类，并区分读表和写表。调用关系仍是推测。

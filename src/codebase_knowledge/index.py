@@ -62,7 +62,14 @@ def parse_java(path: str, source: str) -> tuple[dict, list[dict]]:
         for method in node.body or []:
             if not isinstance(method, javalang.tree.MethodDeclaration):
                 continue
-            methods.append({"name": method.name, "line": _line(method), "status": "exact"})
+            http, route = _mapping(method)
+            methods.append({
+                "name": method.name,
+                "line": _line(method),
+                "status": "exact",
+                "http": http,
+                "route": route,
+            })
         entry = {
             "kind": kind,
             "name": node.name,
@@ -149,6 +156,23 @@ class CodeIndex:
 
     def find_type(self, name: str) -> list[dict]:
         return [item for item in self.types() if item["name"] == name]
+
+    def callers(self, name: str) -> list[dict]:
+        """谁调用了这个名字。没有类型绑定时仍是推测。"""
+        suffix = "." + name
+        return [
+            rel
+            for rel in self.relations()
+            if rel["kind"] == "calls" and (rel["target"] == name or rel["target"].endswith(suffix))
+        ]
+
+    def implementations(self, name: str) -> list[dict]:
+        """只返回解析到的 extends 或 implements，不补没有写出来的实现类。"""
+        return [
+            rel
+            for rel in self.relations("exact")
+            if rel["kind"] in {"extends", "implements"} and rel["target"] == name
+        ]
 
     def summary(self) -> dict:
         roles: dict[str, int] = {}
@@ -244,12 +268,20 @@ def parse_mapper_xml(path: str, source: str) -> tuple[dict, list[dict]]:
         sql = "".join(child.itertext())
         line = _xml_line(lines, tag, stmt_id)
         tables, parsed = _tables_from_sql(sql)
-        statements.append({"id": stmt_id, "namespace": namespace, "sql": sql.strip(), "line": line, "tables": tables})
+        statements.append({
+            "id": stmt_id,
+            "namespace": namespace,
+            "operation": tag,
+            "sql": sql.strip(),
+            "line": line,
+            "tables": tables,
+        })
         if not parsed:
             issues.append(ParseIssue(path, f"{stmt_id or tag} 的 SQL 未能解析，没有记录表关系").to_dict())
             continue
+        kind = "reads_table" if tag == "select" else "writes_table"
         for table in tables:
-            relations.append(_rel(path, f"{namespace}#{stmt_id}", "reads_table", table, line, "exact"))
+            relations.append(_rel(path, f"{namespace}#{stmt_id}", kind, table, line, "exact"))
     return {
         "path": path,
         "parsed": True,
@@ -273,9 +305,35 @@ def _tables_from_sql(sql: str) -> tuple[list[str], bool]:
         parsed = sqlglot.parse_one(normalized, read="postgres")
     except ParseError:
         return [], False
-    if not isinstance(parsed, exp.Select):
+    if not isinstance(parsed, (exp.Select, exp.Insert, exp.Update, exp.Delete)):
         return [], False
     return sorted({table.name for table in parsed.find_all(exp.Table)}), True
+
+
+def _mapping(method) -> tuple[str | None, str | None]:
+    http_methods = {
+        "GetMapping": "GET",
+        "PostMapping": "POST",
+        "PutMapping": "PUT",
+        "DeleteMapping": "DELETE",
+        "PatchMapping": "PATCH",
+        "RequestMapping": "REQUEST",
+    }
+    for annotation in method.annotations or []:
+        name = _annotation_name(annotation)
+        if name in http_methods:
+            return http_methods[name], _annotation_text(annotation.element)
+    return None, None
+
+
+def _annotation_text(element) -> str | None:
+    if isinstance(element, javalang.tree.Literal) and isinstance(element.value, str):
+        return element.value.strip('"').strip("'")
+    if isinstance(element, list):
+        for pair in element:
+            if getattr(pair, "name", None) in {"value", "path"}:
+                return _annotation_text(getattr(pair, "value", None))
+    return None
 
 
 def structure(index: CodeIndex) -> dict:
