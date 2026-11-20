@@ -166,6 +166,26 @@ class CodeIndex:
             if rel["kind"] == "calls" and (rel["target"] == name or rel["target"].endswith(suffix))
         ]
 
+    def routes(self) -> list[dict]:
+        """只返回注解里写明的路径，不猜测未标注的接口。"""
+        rows = []
+        for item in self.types():
+            for method in item["methods"]:
+                if not method.get("route"):
+                    continue
+                rows.append(
+                    {
+                        "http": method.get("http"),
+                        "path": method["route"],
+                        "type": item["name"],
+                        "method": method["name"],
+                        "file": item["path"],
+                        "line": method["line"],
+                        "status": "exact",
+                    }
+                )
+        return rows
+
     def implementations(self, name: str) -> list[dict]:
         """只返回解析到的 extends 或 implements，不补没有写出来的实现类。"""
         return [
@@ -267,7 +287,7 @@ def parse_mapper_xml(path: str, source: str) -> tuple[dict, list[dict]]:
         stmt_id = child.get("id") or ""
         sql = "".join(child.itertext())
         line = _xml_line(lines, tag, stmt_id)
-        tables, parsed = _tables_from_sql(sql)
+        tables, columns, where_columns, parsed = _sql_facts(sql)
         statements.append({
             "id": stmt_id,
             "namespace": namespace,
@@ -275,6 +295,8 @@ def parse_mapper_xml(path: str, source: str) -> tuple[dict, list[dict]]:
             "sql": sql.strip(),
             "line": line,
             "tables": tables,
+            "columns": columns,
+            "where_columns": where_columns,
         })
         if not parsed:
             issues.append(ParseIssue(path, f"{stmt_id or tag} 的 SQL 未能解析，没有记录表关系").to_dict())
@@ -282,6 +304,8 @@ def parse_mapper_xml(path: str, source: str) -> tuple[dict, list[dict]]:
         kind = "reads_table" if tag == "select" else "writes_table"
         for table in tables:
             relations.append(_rel(path, f"{namespace}#{stmt_id}", kind, table, line, "exact"))
+        for column in where_columns:
+            relations.append(_rel(path, f"{namespace}#{stmt_id}", "filters_column", column, line, "exact"))
     return {
         "path": path,
         "parsed": True,
@@ -299,15 +323,19 @@ def _xml_line(lines: list[str], tag: str, stmt_id: str) -> int | None:
     return None
 
 
-def _tables_from_sql(sql: str) -> tuple[list[str], bool]:
+def _sql_facts(sql: str) -> tuple[list[str], list[str], list[str], bool]:
     normalized = re.sub(r"#\{[^}]+\}|\$\{[^}]+\}", "?", sql)
     try:
         parsed = sqlglot.parse_one(normalized, read="postgres")
     except ParseError:
-        return [], False
+        return [], [], [], False
     if not isinstance(parsed, (exp.Select, exp.Insert, exp.Update, exp.Delete)):
-        return [], False
-    return sorted({table.name for table in parsed.find_all(exp.Table)}), True
+        return [], [], [], False
+    tables = sorted({table.name for table in parsed.find_all(exp.Table)})
+    columns = sorted({column.name for column in parsed.find_all(exp.Column)})
+    where = parsed.args.get("where")
+    where_columns = sorted({column.name for column in where.find_all(exp.Column)}) if where else []
+    return tables, columns, where_columns, True
 
 
 def _mapping(method) -> tuple[str | None, str | None]:

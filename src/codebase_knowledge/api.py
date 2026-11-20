@@ -63,6 +63,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
     def graph(scan_id: str):
         return structure(get_index(scan_id))
 
+    @app.get("/api/scans/{scan_id}/routes")
+    def routes(scan_id: str, http: str = "", path: str = ""):
+        rows = get_index(scan_id).routes()
+        if http:
+            rows = [row for row in rows if row["http"] == http.upper()]
+        if path:
+            rows = [row for row in rows if row["path"] == path]
+        return rows
+
     @app.post("/api/scans/{scan_id}/context")
     def context(scan_id: str, body: AskIn):
         return context_for_task(get_index(scan_id), body.question)
