@@ -1,0 +1,66 @@
+"""提交 Java 源码并查询索引。进程内保存最近的扫描结果。"""
+
+from __future__ import annotations
+
+import uuid
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
+from codebase_knowledge.index import CodeIndex, answer, context_for_task
+
+
+class FileIn(BaseModel):
+    path: str
+    content: str
+
+
+class ScanIn(BaseModel):
+    files: list[FileIn] = Field(min_length=1)
+
+
+class AskIn(BaseModel):
+    question: str
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="Codebase Knowledge", version="0.1.0")
+    app.state.scans = {}
+
+    @app.get("/api/health")
+    def health():
+        return {"status": "ok"}
+
+    @app.post("/api/scans")
+    def scan(body: ScanIn):
+        index = CodeIndex()
+        for item in body.files:
+            if item.path.startswith("/") or ".." in item.path.split("/"):
+                raise HTTPException(status_code=400, detail="只接受相对路径")
+            index.add_file(item.path, item.content)
+        scan_id = uuid.uuid4().hex
+        app.state.scans[scan_id] = index
+        return {"id": scan_id, "summary": index.summary(), "issues": index.issues}
+
+    def get_index(scan_id: str) -> CodeIndex:
+        index = app.state.scans.get(scan_id)
+        if index is None:
+            raise HTTPException(status_code=404, detail="扫描不存在")
+        return index
+
+    @app.get("/api/scans/{scan_id}/types")
+    def types(scan_id: str):
+        return get_index(scan_id).types()
+
+    @app.post("/api/scans/{scan_id}/context")
+    def context(scan_id: str, body: AskIn):
+        return context_for_task(get_index(scan_id), body.question)
+
+    @app.post("/api/scans/{scan_id}/ask")
+    def ask(scan_id: str, body: AskIn):
+        return answer(get_index(scan_id), body.question)
+
+    return app
+
+
+app = create_app()
