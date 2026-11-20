@@ -1,0 +1,12 @@
+spring:
+  ai:
+    mcp:
+      client:
+        type: SYNC
+        toolcallback:
+          enabled: true
+        streamable-http:
+          connections:
+            codebase-knowledge:
+              url: http://127.0.0.1:8002
+              endpoint: /mcp

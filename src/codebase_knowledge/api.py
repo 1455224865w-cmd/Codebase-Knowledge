@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from codebase_knowledge.i18n import install, negotiate, translate_payload
 from codebase_knowledge.index import CodeIndex, ScanStore, answer, context_for_task, structure
+from codebase_knowledge.mcp_server import mount
 
 
 class FileIn(BaseModel):
@@ -24,7 +26,9 @@ class AskIn(BaseModel):
 
 
 def create_app(db_path: str | None = None) -> FastAPI:
-    app = FastAPI(title="Codebase Knowledge", version="0.1.0")
+    app = FastAPI(title="Codebase Knowledge", version="0.1.6")
+    install(app)
+    mount(app)
     app.state.scans = {}
     app.state.store = ScanStore(db_path) if db_path else None
 
@@ -77,8 +81,9 @@ def create_app(db_path: str | None = None) -> FastAPI:
         return context_for_task(get_index(scan_id), body.question)
 
     @app.post("/api/scans/{scan_id}/ask")
-    def ask(scan_id: str, body: AskIn):
-        return answer(get_index(scan_id), body.question)
+    def ask(scan_id: str, body: AskIn, request: Request):
+        locale = negotiate(request.headers.get("accept-language"), request.query_params.get("lang"))
+        return translate_payload(answer(get_index(scan_id), body.question), locale)
 
     return app
 
