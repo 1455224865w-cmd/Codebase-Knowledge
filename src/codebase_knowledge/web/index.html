@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Codebase Knowledge</title>
+  <link rel="stylesheet" href="/assets/console.css">
+  <script>document.documentElement.lang = new URLSearchParams(location.search).get("lang") === "en" ? "en" : "zh-CN";</script>
+</head>
+<body>
+  <div class="shell" data-shell="studio">
+    <header class="top">
+      <div class="brand"><span class="mark">CK</span><div><strong>Codebase Knowledge</strong><small><span class="zh">提交源码后查询索引</span><span class="en">Index pasted source</span></small></div></div>
+      <nav class="lang"><button type="button" data-lang="zh">中文</button><button type="button" data-lang="en">English</button></nav>
+    </header>
+    <main class="layout">
+      <section class="panel">
+<p class="note"><span class="zh">只接受相对路径。调用关系在没有类型绑定时仍是推测。</span><span class="en">Relative paths only. Calls stay inferred until a type binding exists.</span></p>
+<label><span class="zh">相对路径</span><span class="en">Relative path</span></label>
+<input id="path" value="src/Demo.java">
+<label><span class="zh">源码</span><span class="en">Source</span></label>
+<textarea id="content">class Demo {}</textarea>
+<label><span class="zh">问题</span><span class="en">Question</span></label>
+<input id="question" value="Demo">
+<div class="actions">
+  <button class="primary" id="scan" type="button"><span class="zh">建立索引</span><span class="en">Index source</span></button>
+  <button id="list" type="button"><span class="zh">本次进程的索引</span><span class="en">Scans in this process</span></button>
+  <button id="ask" type="button"><span class="zh">提问</span><span class="en">Ask</span></button>
+</div>
+</section>
+      <section class="panel"><pre id="out" class="out"></pre></section>
+    </main>
+  </div>
+  <script src="/assets/console.js"></script>
+  <script src="/assets/page.js"></script>
+</body>
+</html>

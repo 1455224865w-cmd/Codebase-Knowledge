@@ -415,6 +415,9 @@ class ScanStore:
         self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.execute("CREATE TABLE IF NOT EXISTS scans (id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
 
+    def ids(self) -> list[str]:
+        return [row[0] for row in self.conn.execute("SELECT id FROM scans")]
+
     def save(self, scan_id: str, index: CodeIndex) -> None:
         payload = json.dumps({"files": index.files, "issues": index.issues}, ensure_ascii=False)
         self.conn.execute("INSERT OR REPLACE INTO scans VALUES (?, ?)", (scan_id, payload))

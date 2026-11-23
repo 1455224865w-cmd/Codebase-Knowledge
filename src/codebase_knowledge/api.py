@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import uuid
 
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from codebase_knowledge.i18n import install, negotiate, translate_payload
@@ -25,10 +29,21 @@ class AskIn(BaseModel):
     question: str
 
 
+def _mount_console(app: FastAPI) -> None:
+    web = Path(__file__).resolve().parent / "web"
+
+    @app.get("/", include_in_schema=False)
+    def console_page():
+        return FileResponse(web / "index.html")
+
+    app.mount("/assets", StaticFiles(directory=web), name="assets")
+
+
 def create_app(db_path: str | None = None) -> FastAPI:
-    app = FastAPI(title="Codebase Knowledge", version="0.1.7")
+    app = FastAPI(title="Codebase Knowledge", version="0.1.8")
     install(app)
     mount(app)
+    _mount_console(app)
     app.state.scans = {}
     app.state.store = ScanStore(db_path) if db_path else None
 
@@ -58,6 +73,25 @@ def create_app(db_path: str | None = None) -> FastAPI:
         if index is None:
             raise HTTPException(status_code=404, detail="扫描不存在")
         return index
+
+    @app.get("/api/scans")
+    def list_scans():
+        identifiers = list(app.state.scans)
+        if app.state.store is not None:
+            for scan_id in app.state.store.ids():
+                if scan_id not in identifiers:
+                    identifiers.append(scan_id)
+        items = []
+        for scan_id in identifiers:
+            index = app.state.scans.get(scan_id)
+            if index is None and app.state.store is not None:
+                index = app.state.store.load(scan_id)
+                if index is not None:
+                    app.state.scans[scan_id] = index
+            if index is None:
+                continue
+            items.append({"id": scan_id, "summary": index.summary()})
+        return items
 
     @app.get("/api/scans/{scan_id}/types")
     def types(scan_id: str):
