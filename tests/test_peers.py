@@ -121,3 +121,8 @@ def test_fields_are_recorded_as_exact_symbols():
     fields = index.find_type("Order")[0]["fields"]
     assert fields[0]["name"] == "code"
     assert fields[0]["status"] == "exact"
+    constructors = index.find_type("Order")[0]["constructors"]
+    assert constructors == []
+    with_ctor = CodeIndex()
+    with_ctor.add_file("src/Box.java", "public class Box {\n    public Box() {}\n}\n")
+    assert with_ctor.find_type("Box")[0]["constructors"][0]["name"] == "Box"
