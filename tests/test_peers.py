@@ -110,3 +110,14 @@ def test_exact_inheritance_cycle_is_reported():
     plain = CodeIndex()
     plain.add_file("src/C.java", "public class C {}")
     assert plain.cycles() == []
+
+
+def test_fields_are_recorded_as_exact_symbols():
+    index = CodeIndex()
+    index.add_file(
+        "src/Order.java",
+        "public class Order {\n    private String code;\n    public String getCode() { return code; }\n}\n",
+    )
+    fields = index.find_type("Order")[0]["fields"]
+    assert fields[0]["name"] == "code"
+    assert fields[0]["status"] == "exact"

@@ -68,6 +68,11 @@ def parse_java(path: str, source: str) -> tuple[dict, list[dict]]:
         annotations = [_annotation_name(item) for item in (node.annotations or [])]
         roles = sorted({ROLE_ANNOTATIONS[name] for name in annotations if name in ROLE_ANNOTATIONS})
         methods = []
+        fields = []
+        for member in node.body or []:
+            if isinstance(member, javalang.tree.FieldDeclaration):
+                for declarator in member.declarators or []:
+                    fields.append({"name": declarator.name, "line": _line(member), "status": "exact"})
         for method in node.body or []:
             if not isinstance(method, javalang.tree.MethodDeclaration):
                 continue
@@ -87,6 +92,7 @@ def parse_java(path: str, source: str) -> tuple[dict, list[dict]]:
             "roles": roles,
             "implements": [item.name for item in (getattr(node, "implements", None) or [])],
             "methods": methods,
+            "fields": fields,
             "status": "exact",
         }
         extended = _extended_names(getattr(node, "extends", None))
