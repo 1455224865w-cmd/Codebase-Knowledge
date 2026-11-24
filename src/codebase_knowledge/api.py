@@ -40,7 +40,7 @@ def _mount_console(app: FastAPI) -> None:
 
 
 def create_app(db_path: str | None = None) -> FastAPI:
-    app = FastAPI(title="Codebase Knowledge", version="0.1.8")
+    app = FastAPI(title="Codebase Knowledge", version="0.1.9")
     install(app)
     mount(app)
     _mount_console(app)

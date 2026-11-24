@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codebase-knowledge"
-version = "0.1.8"
+version = "0.1.9"
 description = "用 Java 解析器建立可追溯的代码索引，供人和 Coding Agent 查询。"
 readme = "README.md"
 requires-python = ">=3.11"

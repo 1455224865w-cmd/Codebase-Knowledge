@@ -1,5 +1,10 @@
 # 变更记录
 
+## 0.1.9
+
+- 镜像地址改为当前 GitHub 账号 `wangcheng-coder`。发布工作流用仓库所有者生成 `ghcr.io/${{ github.repository_owner }}/codebase-knowledge`。
+- 接口的 `extends` 列表会逐个写成精确继承关系。
+
 ## 0.1.8
 
 - 增加统一控制台，并列出当前进程里的扫描摘要，不返回源码。

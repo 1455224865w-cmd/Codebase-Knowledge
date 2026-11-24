@@ -61,6 +61,18 @@ def test_api_rejects_parent_path():
     assert {item["name"] for item in types} == {"OrderController", "OrderMapper"}
 
 
+def test_interface_extends_is_recorded():
+    index = CodeIndex()
+    index.add_file(
+        "src/Reader.java",
+        "interface Reader extends Closeable, Readable { void read(); }",
+    )
+    reader = index.find_type("Reader")[0]
+    assert reader["extends"] == ["Closeable", "Readable"]
+    targets = [rel["target"] for rel in index.relations() if rel["kind"] == "extends"]
+    assert targets == ["Closeable", "Readable"]
+
+
 def test_example_project_parses():
     example = Path(__file__).resolve().parents[1] / "examples" / "spring" / "OrderController.java"
     index = CodeIndex()

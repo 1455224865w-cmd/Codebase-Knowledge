@@ -13,6 +13,15 @@ from javalang.parser import JavaSyntaxError
 from sqlglot import exp
 from sqlglot.errors import ParseError
 
+def _extended_names(raw):
+    if raw is None:
+        return []
+    if isinstance(raw, (list, tuple)):
+        return [item.name for item in raw if getattr(item, "name", None)]
+    name = getattr(raw, "name", None)
+    return [name] if name else []
+
+
 ROLE_ANNOTATIONS = {
     "RestController": "controller",
     "Controller": "controller",
@@ -76,14 +85,20 @@ def parse_java(path: str, source: str) -> tuple[dict, list[dict]]:
             "line": _line(node),
             "annotations": annotations,
             "roles": roles,
-            "extends": getattr(getattr(node, "extends", None), "name", None),
             "implements": [item.name for item in (getattr(node, "implements", None) or [])],
             "methods": methods,
             "status": "exact",
         }
+        extended = _extended_names(getattr(node, "extends", None))
+        if len(extended) == 1:
+            entry["extends"] = extended[0]
+        elif extended:
+            entry["extends"] = extended
+        else:
+            entry["extends"] = None
         types.append(entry)
-        if entry["extends"]:
-            relations.append(_rel(path, node.name, "extends", entry["extends"], _line(node), "exact"))
+        for name in extended:
+            relations.append(_rel(path, node.name, "extends", name, _line(node), "exact"))
         for name in entry["implements"]:
             relations.append(_rel(path, node.name, "implements", name, _line(node), "exact"))
         for method in node.body or []:

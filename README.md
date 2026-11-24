@@ -50,7 +50,7 @@ Spring AI 的 MCP 地址放在 Nacos 的 `nacos/spring-mcp.yaml`。`spring-ai/ap
 docker build -t codebase-knowledge:local .
 ```
 
-`main` 分支的 `.github/workflows/image.yml` 会把镜像推到 `ghcr.io/1455224865w-cmd/codebase-knowledge`。
+`main` 分支的 `.github/workflows/image.yml` 会把镜像推到 `ghcr.io/wangcheng-coder/codebase-knowledge`。
 
 ## 页面
 
